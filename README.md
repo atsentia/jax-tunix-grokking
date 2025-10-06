@@ -42,10 +42,11 @@ This version uses [Flax NNX](https://flax.readthedocs.io/en/latest/nnx/index.htm
 
 ```
 jax-tunix-grokking/
-├── data.py              # Modular arithmetic dataset generation
-├── models.py            # Transformer model (NNX implementation)
-├── train_nnx.py         # Training script with full CLI
-├── plot_results.py      # Visualization utilities
+├── src/                 # Python source files
+│   ├── data.py          # Modular arithmetic dataset generation
+│   ├── models.py        # Transformer model (NNX implementation)
+│   ├── train_nnx.py     # Training script with full CLI
+│   └── plot_results.py  # Visualization utilities
 ├── configs/             # Example configuration files
 │   ├── default.yaml     # Standard grokking experiment (p=97)
 │   ├── quick_test.yaml  # Fast test run (p=7, 20 epochs)
@@ -58,13 +59,13 @@ jax-tunix-grokking/
 
 ### Key Files
 
-- **`data.py`**: Generates modular arithmetic problems (e.g., `23 / 45 = 67 (mod 97)`). Supports all operations: `+`, `-`, `*`, `/`.
-- **`models.py`**: Transformer with modern components:
+- **`src/data.py`**: Generates modular arithmetic problems (e.g., `23 / 45 = 67 (mod 97)`). Supports all operations: `+`, `-`, `*`, `/`.
+- **`src/models.py`**: Transformer with modern components:
   - RMSNorm for layer normalization
   - Rotary Position Embeddings (RoPE)
   - Causal self-attention
   - SiLU-gated feedforward networks
-- **`train_nnx.py`**: Complete training loop with AdamW optimizer, learning rate warmup, and comprehensive logging.
+- **`src/train_nnx.py`**: Complete training loop with AdamW optimizer, learning rate warmup, and comprehensive logging.
 - **`configs/`**: YAML configs for different experiment settings (customize hyperparameters without editing code).
 
 ## Installation
@@ -121,7 +122,7 @@ pip install optax flax numpy matplotlib pyyaml
 Run a standard grokking experiment (modular division, p=97):
 
 ```bash
-python train_nnx.py --epochs 150
+python src/train_nnx.py --epochs 150
 ```
 
 Expected output after ~100-150 epochs:
@@ -136,13 +137,13 @@ Epoch 120 | Train Loss: 0.02 | Train Acc: 99.8% | Val Loss: 0.05 | Val Acc: 99.2
 Verify installation with a fast experiment:
 
 ```bash
-python train_nnx.py --p 7 --epochs 20 --max_steps 50
+python src/train_nnx.py --p 7 --epochs 20 --max_steps 50
 ```
 
 ### Custom Configuration
 
 ```bash
-python train_nnx.py \
+python src/train_nnx.py \
   --p 97 \
   --operation '/' \
   --train_fraction 0.5 \
@@ -163,13 +164,13 @@ python train_nnx.py \
 
 ```bash
 # Standard experiment
-python train_nnx.py --config configs/default.yaml
+python src/train_nnx.py --config configs/default.yaml
 
 # Quick test
-python train_nnx.py --config configs/quick_test.yaml
+python src/train_nnx.py --config configs/quick_test.yaml
 
 # TPU training
-python train_nnx.py --config configs/tpu.yaml
+python src/train_nnx.py --config configs/tpu.yaml
 ```
 
 ### Visualize Results
@@ -177,7 +178,7 @@ python train_nnx.py --config configs/tpu.yaml
 After training, generate plots:
 
 ```bash
-python plot_results.py runs/my_experiment/training_history.json
+python src/plot_results.py runs/my_experiment/training_history.json
 ```
 
 ## Architecture Details
@@ -249,7 +250,7 @@ For distributed training on TPU:
 # Clone and run
 !git clone https://github.com/yourusername/jax-tunix-grokking.git
 %cd jax-tunix-grokking
-!python train_nnx.py --config configs/tpu.yaml
+!python src/train_nnx.py --config configs/tpu.yaml
 ```
 
 Expected speedup: ~5-8x faster than CPU on TPU v3-8.
