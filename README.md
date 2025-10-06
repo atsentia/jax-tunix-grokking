@@ -8,6 +8,22 @@ delayed generalization on modular arithmetic tasks.
 
 Grokking is a phenomenon where neural networks initially memorize training data with poor generalization, then suddenly "understand" the underlying pattern and achieve near-perfect validation accuracy. This implementation reproduces the dramatic phase transition described in [Power et al. (2022)](https://arxiv.org/abs/2201.02177).
 
+Here's a typical grokking curve from a 150-epoch run with p=97, division operation, and 50% training data:
+
+![Grokking Example](runs/example/grokking_plot_simple.png)
+
+**Key observations:**
+- **Epochs 0~60**: Model memorizes training data (high train acc, low val acc)
+- **Epochs 60~80**: Sudden "grokking" transition (val acc jumps from ~11% to ~84%)
+- **Epochs 80~150**: Perfect generalization—both train and val acc converge to ~100%
+
+Training metrics:
+```
+Final Train Accuracy: 99.4%
+Final Validation Accuracy: 99.9%
+Grokking Transition: Epoch ~70
+```
+
 ## Attribution
 
 This implementation builds upon prior work:
@@ -162,24 +178,6 @@ After training, generate plots:
 
 ```bash
 python plot_results.py runs/my_experiment/training_history.json
-```
-
-## Example Results
-
-Here's a typical grokking curve from a 150-epoch run with p=97, division operation, and 50% training data:
-
-![Grokking Example](runs/example/grokking_plot_simple.png)
-
-**Key observations:**
-- **Epochs 0-60**: Model memorizes training data (high train acc, low val acc)
-- **Epochs 60-80**: Sudden "grokking" transition (val acc jumps from ~30% to ~95%)
-- **Epochs 80-150**: Both train and val acc converge to ~99.9%
-
-Training metrics:
-```
-Final Train Accuracy: 99.8%
-Final Validation Accuracy: 99.9%
-Grokking Transition: Epoch ~65-75
 ```
 
 ## Architecture Details
