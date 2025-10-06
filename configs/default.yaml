@@ -1,0 +1,30 @@
+# Default Grokking Experiment Configuration
+# Standard settings for reproducing the grokking phenomenon with p=97, division
+
+# Data parameters
+p: 97                      # Prime modulus (larger = harder task)
+operation: "/"             # Modular arithmetic operation: +, -, *, /
+train_fraction: 0.5        # Fraction of data used for training (rest for validation)
+
+# Model architecture
+depth: 2                   # Number of transformer layers
+dim: 128                   # Hidden dimension size
+heads: 1                   # Number of attention heads
+dropout: 0.2               # Dropout rate for regularization
+
+# Training hyperparameters
+epochs: 150                # Total training epochs
+batch_size: 512            # Batch size (full-batch training typical for grokking)
+learning_rate: 0.001       # Initial learning rate (1e-3)
+warmup_steps: 10           # Linear warmup steps
+weight_decay: 1.0          # Weight decay (crucial for grokking - unusually high!)
+beta1: 0.9                 # Adam beta1
+beta2: 0.98                # Adam beta2
+
+# Logging and output
+save_dir: "runs/default"   # Directory to save results
+log_interval: 1            # Log metrics every N epochs
+seed: 42                   # Random seed for reproducibility
+
+# Advanced options
+max_steps: null            # Maximum steps per epoch (null = use full dataset)

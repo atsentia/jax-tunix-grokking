@@ -205,3 +205,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Project-specific
+# Training runs - exclude all except example
+runs/*
+!runs/example/
+!runs/example/**
+
+# Ensure __pycache__ is ignored everywhere
+**/__pycache__/
+*.pyc

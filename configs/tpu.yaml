@@ -1,0 +1,36 @@
+# TPU Distributed Training Configuration
+# Optimized for Google Colab TPU v3-8 or GCP TPU VMs
+
+# Data parameters
+p: 97                      # Standard prime for grokking
+operation: "/"             # Division (hardest operation)
+train_fraction: 0.5
+
+# Model architecture
+depth: 2
+dim: 128
+heads: 1
+dropout: 0.2
+
+# Training hyperparameters
+epochs: 150                # Full grokking experiment
+batch_size: 512            # Can increase for multi-device (e.g., 2048 for 8 TPU cores)
+learning_rate: 0.001       # May want to scale with batch size
+warmup_steps: 10
+weight_decay: 1.0
+beta1: 0.9
+beta2: 0.98
+
+# Logging and output
+save_dir: "runs/tpu_training"
+log_interval: 1
+seed: 42
+
+# Advanced options
+max_steps: null
+
+# TPU-specific notes:
+# - JAX will automatically use all available TPU cores
+# - Consider increasing batch_size proportionally to number of cores
+# - For TPU v3-8 (8 cores), batch_size=2048 or 4096 works well
+# - Training should be ~5-8x faster than CPU

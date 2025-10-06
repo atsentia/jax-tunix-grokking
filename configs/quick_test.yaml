@@ -1,0 +1,30 @@
+# Quick Test Configuration
+# Fast experiment for testing installation and code changes
+
+# Data parameters
+p: 7                       # Small prime for fast testing
+operation: "+"             # Addition (easiest operation)
+train_fraction: 0.5        # Standard train/val split
+
+# Model architecture (same as default)
+depth: 2
+dim: 128
+heads: 1
+dropout: 0.2
+
+# Training hyperparameters (reduced for speed)
+epochs: 20                 # Short training run
+batch_size: 512
+learning_rate: 0.001
+warmup_steps: 10
+weight_decay: 1.0
+beta1: 0.9
+beta2: 0.98
+
+# Logging and output
+save_dir: "runs/quick_test"
+log_interval: 1
+seed: 42
+
+# Advanced options
+max_steps: 50              # Limit steps per epoch for faster iteration
