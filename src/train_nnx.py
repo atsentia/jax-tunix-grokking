@@ -31,40 +31,41 @@ from checkpointing import (
 )
 from models import Transformer, TransformerConfig
 from data import grokking_data
+from optimizers import create_optimizer as create_optimizer_factory
 
 
-def create_optimizer(learning_rate: float, warmup_steps: int, beta1: float,
-                     beta2: float, weight_decay: float) -> optax.GradientTransformation:
+def create_optimizer(
+    optimizer_type: str,
+    learning_rate: float,
+    warmup_steps: int,
+    beta1: float,
+    beta2: float,
+    weight_decay: float
+) -> optax.GradientTransformation:
     """
-    Create AdamW optimizer with linear warmup.
+    Create optimizer with linear warmup.
 
-    Critical for grokking parity (PRD Section 3.2):
-    - AdamW with exact hyperparameters
-    - Linear warmup over first 10 steps
-    - Weight decay=1.0 (high value essential for grokking)
+    Supports both AdamW (original) and Muon (newer) optimizers.
+
+    Args:
+        optimizer_type: 'adamw' or 'muon'
+        learning_rate: Peak learning rate
+        warmup_steps: Linear warmup steps
+        beta1: AdamW beta1 (ignored for Muon)
+        beta2: AdamW beta2 (ignored for Muon)
+        weight_decay: Weight decay coefficient
+
+    Returns:
+        Optax GradientTransformation
     """
-    # Learning rate schedule with warmup
-    warmup_fn = optax.linear_schedule(
-        init_value=0.0,
-        end_value=learning_rate,
-        transition_steps=warmup_steps
+    return create_optimizer_factory(
+        optimizer_type=optimizer_type,
+        learning_rate=learning_rate,
+        warmup_steps=warmup_steps,
+        weight_decay=weight_decay,
+        beta1=beta1,
+        beta2=beta2
     )
-    constant_fn = optax.constant_schedule(value=learning_rate)
-    schedule_fn = optax.join_schedules(
-        schedules=[warmup_fn, constant_fn],
-        boundaries=[warmup_steps]
-    )
-
-    # AdamW optimizer
-    optimizer = optax.adamw(
-        learning_rate=schedule_fn,
-        b1=beta1,
-        b2=beta2,
-        eps=1e-8,
-        weight_decay=weight_decay
-    )
-
-    return optimizer
 
 
 def compute_loss_and_accuracy(
@@ -195,6 +196,7 @@ def train(
     beta1: float = 0.9,
     beta2: float = 0.98,
     warmup_steps: int = 10,
+    optimizer_type: str = 'adamw',
 
     # Other
     seed: int = 42,
@@ -220,7 +222,7 @@ def train(
     print(f"  Model: depth={depth}, dim={dim}, heads={heads}, dropout={dropout}")
     print(f"  Data: p={p}, op='{operation}', train_frac={train_fraction}")
     print(f"  Training: epochs={epochs}, batch_size={batch_size}")
-    print(f"  Optimizer: AdamW(lr={learning_rate}, wd={weight_decay}, β1={beta1}, β2={beta2})")
+    print(f"  Optimizer: {optimizer_type}(lr={learning_rate}, wd={weight_decay}, β1={beta1}, β2={beta2})")
     print(f"  Warmup: {warmup_steps} steps")
     print(f"  Seed: {seed}")
     if save_dir:
@@ -295,7 +297,8 @@ def train(
 
     # 3. Create optimizer
     print(f"\n3. Creating optimizer...")
-    optimizer = create_optimizer(learning_rate, warmup_steps, beta1, beta2, weight_decay)
+    print(f"   Optimizer type: {optimizer_type}")
+    optimizer = create_optimizer(optimizer_type, learning_rate, warmup_steps, beta1, beta2, weight_decay)
 
     # Initialize optimizer state with only trainable parameters (nnx.Param)
     param_state = nnx.state(model, nnx.Param)
@@ -468,6 +471,8 @@ if __name__ == "__main__":
     parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--weight_decay', type=float, default=1.0)
     parser.add_argument('--warmup_steps', type=int, default=10)
+    parser.add_argument('--optimizer', type=str, default='adamw', choices=['adamw', 'muon'],
+                        help='Optimizer type: adamw (original) or muon (newer)')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--max_steps', type=int, default=None)
     parser.add_argument('--save_dir', type=str, default='runs/nnx_baseline')
@@ -476,4 +481,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    model, history = train(**vars(args))
+    # Map CLI args to function params
+    train_args = vars(args)
+    train_args['optimizer_type'] = train_args.pop('optimizer')
+
+    model, history = train(**train_args)
