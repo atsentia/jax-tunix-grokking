@@ -55,6 +55,7 @@ class TrainingConfig:
     beta1: float = 0.9
     beta2: float = 0.98
     warmup_steps: int = 0
+    optimizer_type: str = "adamw"
     log_every: int = 1
 
 
@@ -131,7 +132,7 @@ class FeatureProjector(nnx.Module):
     """Linear projectors that map teacher hidden states to student width."""
 
     def __init__(self, teacher_dim: int, student_dim: int, num_features: int, rngs: nnx.Rngs):
-        self.layers = nnx.List()
+        self.layers = []
         for _ in range(num_features):
             self.layers.append(
                 nnx.Linear(teacher_dim, student_dim, use_bias=False, rngs=rngs)
@@ -302,10 +303,15 @@ def _evaluate_student(
                 )
             )
         if config.requires_feature_projection():
+            teacher_hidden = [jax.lax.stop_gradient(h) for h in teacher_aux.get("hidden_states", [])]
+            if container.projector is not None:
+                projected_teacher = container.projector(teacher_hidden)
+            else:
+                projected_teacher = teacher_hidden
             metrics["feature_loss"] = float(
                 _feature_projection_loss(
                     student_aux.get("hidden_states", []),
-                    [jax.lax.stop_gradient(h) for h in teacher_aux.get("hidden_states", [])],
+                    projected_teacher,
                 )
             )
 
@@ -429,6 +435,7 @@ def load_teacher_checkpoint(checkpoint_dir: Path) -> Tuple[Transformer, Checkpoi
     teacher = Transformer(teacher_config, rngs)
 
     optimizer = create_optimizer(
+        optimizer_type=metadata.optimizer.get("type", "adamw"),
         learning_rate=metadata.optimizer.get("learning_rate", 1e-3),
         warmup_steps=metadata.optimizer.get("warmup_steps", 0),
         beta1=metadata.optimizer.get("beta1", 0.9),
@@ -497,6 +504,7 @@ def run_distillation(
     container = DistillationContainer(student=student, projector=projector)
 
     optimizer = create_optimizer(
+        optimizer_type=training_config.optimizer_type,
         learning_rate=training_config.learning_rate,
         warmup_steps=training_config.warmup_steps,
         beta1=training_config.beta1,
