@@ -375,8 +375,8 @@ class Transformer(nnx.Module):
         )
 
         # Transformer blocks: attention + FFN modules stored separately
-        self.attention_layers = nnx.List()
-        self.ffn_layers = nnx.List()
+        # Using lists to store layers for easy iteration
+        self.layers = []
         for _ in range(config.depth):
             attn = MultiHeadSelfAttention(
                 dim=config.dim,
@@ -390,8 +390,7 @@ class Transformer(nnx.Module):
                 dropout=config.dropout,
                 rngs=rngs
             )
-            self.attention_layers.append(attn)
-            self.ffn_layers.append(ffn)
+            self.layers.append((attn, ffn))
 
         # Final normalization
         self.final_norm = RMSNorm(config.dim, eps=1e-6, use_fast_variance=False)
@@ -433,7 +432,7 @@ class Transformer(nnx.Module):
             hidden_states.append(x)
 
         # Transformer blocks with residual connections
-        for attn, ffn in zip(self.attention_layers, self.ffn_layers):
+        for attn, ffn in self.layers:
             # Attention with residual
             attn_out = attn(x, training=training, return_attention=return_intermediates)
             if return_intermediates:
