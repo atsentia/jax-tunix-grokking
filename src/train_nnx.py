@@ -10,6 +10,7 @@ Critical parameters for grokking (per PRD):
 - Architecture: depth=2, dim=128, heads=1, dropout=0.2
 """
 
+import dataclasses
 import time
 import numpy as np
 import jax
@@ -18,11 +19,18 @@ import optax
 from flax import nnx
 from typing import Dict, Tuple
 import argparse
-import json
 from pathlib import Path
 
+from checkpointing import (
+    CheckpointMetadata,
+    load_history,
+    restore_checkpoint,
+    save_checkpoint,
+    save_history,
+    read_metadata,
+)
 from models import Transformer, TransformerConfig
-from data import grokking_data, GrokkingDatasetIterator
+from data import grokking_data
 
 
 def create_optimizer(learning_rate: float, warmup_steps: int, beta1: float,
@@ -151,6 +159,21 @@ def compute_weight_norm(model: Transformer) -> float:
     return float(total_norm)
 
 
+def create_history_dict() -> Dict[str, list]:
+    """Create an empty history dictionary for metrics tracking."""
+
+    return {
+        'step': [],
+        'epoch': [],
+        'train_loss': [],
+        'train_acc': [],
+        'val_loss': [],
+        'val_acc': [],
+        'lr': [],
+        'weight_norm': [],
+    }
+
+
 def train(
     # Model config
     depth: int = 2,
@@ -177,12 +200,15 @@ def train(
     seed: int = 42,
     log_every: int = 10,
     save_dir: str = None,
+    checkpoint_dir: str = None,
+    resume: bool = False,
     max_steps: int = None
 ):
     """
     Train grokking model with NNX.
 
-    Args match baseline main.py for exact parity testing.
+    Matches baseline hyper-parameters while adding Orbax-based checkpointing
+    and resume support for long-running experiments.
     """
 
     print("=" * 80)
@@ -197,6 +223,10 @@ def train(
     print(f"  Optimizer: AdamW(lr={learning_rate}, wd={weight_decay}, β1={beta1}, β2={beta2})")
     print(f"  Warmup: {warmup_steps} steps")
     print(f"  Seed: {seed}")
+    if save_dir:
+        print(f"  Save dir: {save_dir}")
+    if checkpoint_dir:
+        print(f"  Checkpoints: {checkpoint_dir} (resume={'yes' if resume else 'no'})")
 
     # 1. Prepare data
     print(f"\n1. Loading data...")
@@ -225,6 +255,40 @@ def train(
     rngs = nnx.Rngs(params=seed, dropout=seed)
     model = Transformer(config, rngs)
 
+    save_path = Path(save_dir) if save_dir else None
+    history_file = None
+    if save_path:
+        save_path.mkdir(parents=True, exist_ok=True)
+        history_file = save_path / 'training_history.json'
+
+    checkpoint_path = Path(checkpoint_dir) if checkpoint_dir else None
+    metadata = None
+    optimizer_config = {
+        "learning_rate": learning_rate,
+        "beta1": beta1,
+        "beta2": beta2,
+        "weight_decay": weight_decay,
+        "warmup_steps": warmup_steps,
+    }
+    config_dict = dataclasses.asdict(config)
+    if checkpoint_path:
+        checkpoint_path.mkdir(parents=True, exist_ok=True)
+        metadata = read_metadata(checkpoint_path)
+        if metadata is None:
+            metadata = CheckpointMetadata(
+                config=config_dict,
+                optimizer=optimizer_config,
+                seed=seed,
+            )
+        else:
+            if metadata.config and metadata.config != config_dict:
+                raise ValueError(
+                    "Checkpoint configuration does not match current run settings"
+                )
+            metadata.config = config_dict
+            metadata.optimizer = optimizer_config
+            metadata.seed = seed
+
     param_count = sum(p.size for p in jax.tree.leaves(nnx.state(model)))
     print(f"   Parameters: {param_count:,}")
     print(f"   Initial weight norm: {compute_weight_norm(model):.4f}")
@@ -249,22 +313,40 @@ def train(
     num_train = X_train.shape[0]
     num_batches = int(np.ceil(num_train / batch_size))
     total_steps = 0
+    start_epoch = 1
 
-    # For logging
-    history = {
-        'step': [],
-        'epoch': [],
-        'train_loss': [],
-        'train_acc': [],
-        'val_loss': [],
-        'val_acc': [],
-        'lr': [],
-        'weight_norm': []
-    }
+    history = create_history_dict()
+    if resume and history_file and history_file.exists():
+        history = load_history(history_file)
+        if not history:
+            history = create_history_dict()
 
     rng = jax.random.PRNGKey(seed)
 
-    for epoch in range(1, epochs + 1):
+    if checkpoint_path and metadata and resume:
+        restored = restore_checkpoint(
+            checkpoint_path,
+            model,
+            opt_state,
+            rng,
+            metadata,
+        )
+        if restored:
+            opt_state = restored.optimizer_state
+            rng = restored.rng_key
+            total_steps = restored.step
+            start_epoch = restored.epoch + 1
+            if history_file and history_file.exists():
+                history = load_history(history_file)
+                if not history:
+                    history = create_history_dict()
+            print(
+                f"  Resumed from step {total_steps} (epoch {restored.epoch})"
+            )
+        else:
+            print("  No checkpoint found; starting fresh.")
+
+    for epoch in range(start_epoch, epochs + 1):
         if max_steps and total_steps >= max_steps:
             break
 
@@ -329,6 +411,20 @@ def train(
         history['lr'].append(float(current_lr))
         history['weight_norm'].append(weight_norm)
 
+        if history_file:
+            save_history(history_file, history)
+
+        if checkpoint_path and metadata:
+            save_checkpoint(
+                checkpoint_path,
+                model,
+                opt_state,
+                rng,
+                total_steps,
+                epoch,
+                metadata,
+            )
+
         # Check for assertions
         assert np.isfinite(train_loss), f"Train loss not finite at epoch {epoch}"
         assert np.isfinite(val_loss), f"Val loss not finite at epoch {epoch}"
@@ -341,21 +437,13 @@ def train(
     print(f"  Final weight norm: {weight_norm:.2f}")
 
     # Save results
-    if save_dir:
-        save_path = Path(save_dir)
-        save_path.mkdir(parents=True, exist_ok=True)
-
-        # Save history
-        history_file = save_path / 'training_history.json'
-        with open(history_file, 'w') as f:
-            json.dump(history, f, indent=2)
+    if history_file:
+        save_history(history_file, history)
         print(f"\n  Saved history to: {history_file}")
 
-        # Save final model state
-        model_file = save_path / 'final_model_state.npz'
-        final_state = nnx.state(model)
-        # Note: Would need custom serialization for full save
-        print(f"  Model state ready (serialization TBD)")
+    if checkpoint_path and metadata and metadata.latest_step is not None:
+        latest_dir = checkpoint_path / f"step_{metadata.latest_step:08d}"
+        print(f"  Latest checkpoint: {latest_dir}")
 
     return model, history
 
@@ -383,6 +471,8 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--max_steps', type=int, default=None)
     parser.add_argument('--save_dir', type=str, default='runs/nnx_baseline')
+    parser.add_argument('--checkpoint_dir', type=str, default='runs/nnx_baseline/checkpoints')
+    parser.add_argument('--resume', action='store_true')
 
     args = parser.parse_args()
 
