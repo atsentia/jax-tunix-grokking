@@ -309,6 +309,38 @@ def test_gradient_flow():
     print("="*60)
 
 
+def test_return_intermediates_shapes():
+    """Transformer should expose intermediate activations for distillation."""
+
+    p = 11
+    n_tokens = p + 2
+    seq_len = 4
+    config = TransformerConfig(
+        depth=2,
+        dim=32,
+        heads=2,
+        n_tokens=n_tokens,
+        seq_len=seq_len,
+        dropout=0.0,
+        pool='cls',
+    )
+
+    model = Transformer(config, rngs=nnx.Rngs(params=0, dropout=0))
+    x = jnp.arange(seq_len * 3).reshape(3, seq_len) % n_tokens
+
+    logits, aux = model(x, training=False, return_intermediates=True)
+
+    assert logits.shape == (3, n_tokens)
+    assert isinstance(aux, dict)
+    assert len(aux['attentions']) == config.depth
+    assert len(aux['hidden_states']) == 1 + config.depth * 2 + 1
+    for attn in aux['attentions']:
+        assert attn.shape == (3, config.heads, seq_len, seq_len)
+    for hidden in aux['hidden_states']:
+        assert hidden.shape[0] == 3
+        assert hidden.shape[-1] == config.dim
+
+
 if __name__ == "__main__":
     print("\n" + "="*80)
     print("GROKKING MODEL UNIT TESTS")

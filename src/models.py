@@ -177,16 +177,22 @@ class MultiHeadSelfAttention(nnx.Module):
         # Dropout
         self.dropout = nnx.Dropout(rate=dropout, rngs=rngs) if dropout > 0 else None
 
-    def __call__(self, x: jax.Array, training: bool = True) -> jax.Array:
+    def __call__(
+        self,
+        x: jax.Array,
+        training: bool = True,
+        return_attention: bool = False,
+    ) -> jax.Array:
         """
         Apply multi-head self-attention.
 
         Args:
             x: Input tensor [batch, seq, dim]
             training: Whether in training mode (for dropout)
+            return_attention: If True, also return the attention weights.
 
         Returns:
-            Output tensor [batch, seq, dim]
+            Output tensor [batch, seq, dim] or tuple(output, attention_weights)
         """
         b, seq, d = x.shape
         assert d == self.dim, f"Expected dim {self.dim}, got {d}"
@@ -231,6 +237,9 @@ class MultiHeadSelfAttention(nnx.Module):
         # Dropout
         if self.dropout is not None and training:
             out = self.dropout(out)
+
+        if return_attention:
+            return out, attn_weights
 
         return out
 
@@ -365,8 +374,9 @@ class Transformer(nnx.Module):
             rngs=rngs
         )
 
-        # Transformer blocks: [(Attention, FFN), ...]
-        self.blocks = []
+        # Transformer blocks: attention + FFN modules stored separately
+        self.attention_layers = nnx.List()
+        self.ffn_layers = nnx.List()
         for _ in range(config.depth):
             attn = MultiHeadSelfAttention(
                 dim=config.dim,
@@ -380,7 +390,8 @@ class Transformer(nnx.Module):
                 dropout=config.dropout,
                 rngs=rngs
             )
-            self.blocks.append((attn, ffn))
+            self.attention_layers.append(attn)
+            self.ffn_layers.append(ffn)
 
         # Final normalization
         self.final_norm = RMSNorm(config.dim, eps=1e-6, use_fast_variance=False)
@@ -393,16 +404,22 @@ class Transformer(nnx.Module):
             rngs=rngs
         )
 
-    def __call__(self, x: jax.Array, training: bool = True) -> jax.Array:
+    def __call__(
+        self,
+        x: jax.Array,
+        training: bool = True,
+        return_intermediates: bool = False,
+    ) -> jax.Array:
         """
         Forward pass through transformer.
 
         Args:
             x: Input token indices [batch, seq_len] (int32)
             training: Whether in training mode (for dropout)
+            return_intermediates: Whether to return attention maps/hidden states.
 
         Returns:
-            Logits [batch, n_tokens]
+            Logits [batch, n_tokens] or tuple(logits, aux)
         """
         assert x.dtype in [jnp.int32, jnp.int64], f"Expected integer input, got {x.dtype}"
         assert x.ndim == 2, f"Expected 2D input [batch, seq], got shape {x.shape}"
@@ -410,25 +427,48 @@ class Transformer(nnx.Module):
         # Token embeddings
         x = self.embedding(x)  # [batch, seq_len, dim]
 
+        attentions = []
+        hidden_states = []
+        if return_intermediates:
+            hidden_states.append(x)
+
         # Transformer blocks with residual connections
-        for attn, ffn in self.blocks:
+        for attn, ffn in zip(self.attention_layers, self.ffn_layers):
             # Attention with residual
-            x = x + attn(x, training=training)
+            attn_out = attn(x, training=training, return_attention=return_intermediates)
+            if return_intermediates:
+                attn_out, attn_weights = attn_out
+                attentions.append(attn_weights)
+            x = x + attn_out
+            if return_intermediates:
+                hidden_states.append(x)
 
             # FFN with residual
             x = x + ffn(x, training=training)
+            if return_intermediates:
+                hidden_states.append(x)
 
         # Final normalization
         x = self.final_norm(x)
+        if return_intermediates:
+            hidden_states.append(x)
 
         # Pooling
         if self.config.pool == 'mean':
-            x = jnp.mean(x, axis=1)  # [batch, dim]
+            pooled = jnp.mean(x, axis=1)  # [batch, dim]
         else:  # 'cls' - use last token
-            x = x[:, -1, :]  # [batch, dim]
+            pooled = x[:, -1, :]  # [batch, dim]
 
         # Output projection
-        logits = self.output_dense(x)  # [batch, n_tokens]
+        logits = self.output_dense(pooled)  # [batch, n_tokens]
+
+        if return_intermediates:
+            aux = {
+                "attentions": attentions,
+                "hidden_states": hidden_states,
+                "pooled": pooled,
+            }
+            return logits, aux
 
         return logits
 
