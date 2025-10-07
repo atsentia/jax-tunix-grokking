@@ -406,7 +406,7 @@ Shannon entropy of attention distributions measures pattern diversity:
 
 **Summary Visualization:**
 
-![Mechanistic Analysis](paper_mechanistic_analysis.png)
+![Mechanistic Analysis](figures/paper_mechanistic_analysis.png)
 
 *Figure 2: Mechanistic interpretability analysis comparing teacher and student models. (Left) CKA scores show strong early-layer alignment between teacher and students. (Middle) Effective rank reveals students learn more compact representations than the teacher. (Right) Attention entropy indicates varying pattern diversity, with feature distillation showing the most diffuse Layer 1 attention.*
 
@@ -441,7 +441,7 @@ Each run will use identical hyperparameters but different random seeds for:
 
 **Training curves with confidence intervals:**
 
-![10× Run Results](paper_10x_runs_placeholder.png)
+![10× Run Results](figures/paper_10x_runs_placeholder.png)
 
 *Figure 3: Training curves from 10 independent runs per strategy. Shaded regions show 95% confidence intervals. Final plot will replace this placeholder once experiments complete.*
 

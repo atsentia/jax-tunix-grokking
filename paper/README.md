@@ -1,7 +1,27 @@
 # Distilled Grokking Paper - Summary
 
 ## Paper Location
-**Main paper:** `paper_distilled_grokking.md`
+**Main paper:** `paper/paper.md` (51KB markdown file with complete content)
+
+## Directory Structure
+```
+paper/
+├── paper.md              # Complete research paper (main document)
+├── README.md             # This file - paper summary and guide
+├── figures/              # All generated figures and plots
+│   ├── paper_teacher_grokking.{png,pdf}
+│   ├── paper_distillation_comparison.{png,pdf}
+│   ├── paper_mechanistic_analysis.{png,pdf}
+│   ├── paper_10x_runs_placeholder.{png,pdf}
+│   └── paper_results_table.tex
+├── scripts/              # Scripts to generate figures and run analysis
+│   ├── generate_paper_plots.py
+│   ├── mechanistic_analysis.py
+│   ├── plot_mechanistic_analysis.py
+│   └── create_placeholder_figure.py
+└── data/                 # Analysis results data
+    └── mechanistic_analysis_results.json
+```
 
 ## Generated Figures
 

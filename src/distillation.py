@@ -423,7 +423,11 @@ def _distillation_train_step(
 
 
 def load_teacher_checkpoint(checkpoint_dir: Path) -> Tuple[Transformer, CheckpointMetadata]:
-    """Load a teacher model from checkpoint for distillation."""
+    """Load a teacher model from checkpoint for distillation.
+
+    Handles both regular teacher checkpoints and distilled student checkpoints
+    (which contain a DistillationContainer wrapping the student).
+    """
 
     checkpoint_dir = Path(checkpoint_dir)
     metadata = read_metadata(checkpoint_dir)
@@ -445,11 +449,31 @@ def load_teacher_checkpoint(checkpoint_dir: Path) -> Tuple[Transformer, Checkpoi
 
     opt_state = optimizer.init(nnx.state(teacher, nnx.Param))
     rng = jax.random.PRNGKey(metadata.seed)
-    restored = restore_checkpoint(checkpoint_dir, teacher, opt_state, rng, metadata)
-    if restored is None:
-        raise ValueError(f"Unable to restore checkpoint from {checkpoint_dir}.")
 
-    return teacher, metadata
+    try:
+        # Try to load as plain Transformer (original teacher)
+        restored = restore_checkpoint(checkpoint_dir, teacher, opt_state, rng, metadata)
+        if restored is None:
+            raise ValueError("Restore returned None")
+        return teacher, metadata
+    except Exception as e:
+        # If that fails, checkpoint might be from distillation (contains DistillationContainer)
+        # Try loading into a DistillationContainer and extract the student
+        if "student" in str(e):
+            print(f"[Tunix] Checkpoint appears to be from distillation, extracting student model...")
+            teacher = Transformer(teacher_config, rngs)  # Recreate
+            container = DistillationContainer(teacher, projector=None)
+            opt_state = optimizer.init(nnx.state(container, nnx.Param))
+
+            restored = restore_checkpoint(checkpoint_dir, container, opt_state, rng, metadata)
+            if restored is None:
+                raise ValueError(f"Unable to restore checkpoint from {checkpoint_dir}: {e}")
+
+            # Extract the student model from the container
+            return container.student, metadata
+        else:
+            # Re-raise if it's a different error
+            raise
 
 
 def run_distillation(
