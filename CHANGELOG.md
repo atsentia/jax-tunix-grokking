@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Recursive Distillation**: Multi-stage knowledge distillation experiments
+  - Created recursive distillation test scripts for all three strategies (logit, attention, feature)
+  - Modified `load_teacher_checkpoint()` to handle both plain Transformer and DistillationContainer checkpoints
+  - Tested 0.25x models (32d, ~35k params) by distilling from 0.5x distilled teachers
+  - Added monitoring script (`monitor_recursive.sh`) to track all recursive experiments
 - **Muon Optimizer Support**: Added support for the Muon optimizer as an alternative to AdamW
   - Created `src/optimizers.py` with factory functions for both AdamW and Muon optimizers
   - Added `--optimizer {adamw|muon}` CLI argument to `train_nnx.py`

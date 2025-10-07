@@ -1,0 +1,17 @@
+
+\begin{table}[h]
+\centering
+\caption{Distillation Results: 0.5× Student Models (64-dim, 2 layers, ~140k params)}
+\label{tab:results}
+\begin{tabular}{lcccc}
+\hline
+\textbf{Model} & \textbf{Params} & \textbf{Epochs} & \textbf{Train Acc (%)} & \textbf{Val Acc (%)} \\
+\hline
+Teacher (128-dim) & 550k & 150 & 99.85 & 100.00 \\
+\hline
+Logit Distillation & 140k & 50 & 4.79 & 1.12 \\
+Attention Transfer & 140k & 50 & 98.69 & 99.96 \\
+Feature Projection & 140k & 50 & 99.57 & 100.00 \\
+\hline
+\end{tabular}
+\end{table}

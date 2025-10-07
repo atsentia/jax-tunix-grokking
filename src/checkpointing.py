@@ -99,7 +99,7 @@ def save_checkpoint(
 ) -> None:
     """Save a training checkpoint using Orbax."""
 
-    directory = Path(directory)
+    directory = Path(directory).resolve()  # Convert to absolute path
     directory.mkdir(parents=True, exist_ok=True)
 
     payload = {
@@ -129,7 +129,7 @@ def restore_checkpoint(
     """Restore the latest checkpoint into the provided model.
 
     Args:
-        directory: Root directory containing checkpoints.
+        directory: Root directory containing checkpoints (converted to absolute path).
         model: Model instance whose state will be updated.
         optimizer_state_template: Optimizer state with the correct structure.
         rng_key_template: PRNGKey used as template for restoration.
@@ -142,7 +142,7 @@ def restore_checkpoint(
     if metadata.latest_step is None:
         return None
 
-    directory = Path(directory)
+    directory = Path(directory).resolve()  # Convert to absolute path
     step_dir = _step_directory(directory, metadata.latest_step)
     if not step_dir.exists():
         return None

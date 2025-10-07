@@ -55,6 +55,7 @@ class TrainingConfig:
     beta1: float = 0.9
     beta2: float = 0.98
     warmup_steps: int = 0
+    optimizer_type: str = "adamw"
     log_every: int = 1
 
 
@@ -131,7 +132,7 @@ class FeatureProjector(nnx.Module):
     """Linear projectors that map teacher hidden states to student width."""
 
     def __init__(self, teacher_dim: int, student_dim: int, num_features: int, rngs: nnx.Rngs):
-        self.layers = nnx.List()
+        self.layers = []
         for _ in range(num_features):
             self.layers.append(
                 nnx.Linear(teacher_dim, student_dim, use_bias=False, rngs=rngs)
@@ -302,10 +303,15 @@ def _evaluate_student(
                 )
             )
         if config.requires_feature_projection():
+            teacher_hidden = [jax.lax.stop_gradient(h) for h in teacher_aux.get("hidden_states", [])]
+            if container.projector is not None:
+                projected_teacher = container.projector(teacher_hidden)
+            else:
+                projected_teacher = teacher_hidden
             metrics["feature_loss"] = float(
                 _feature_projection_loss(
                     student_aux.get("hidden_states", []),
-                    [jax.lax.stop_gradient(h) for h in teacher_aux.get("hidden_states", [])],
+                    projected_teacher,
                 )
             )
 
@@ -417,7 +423,11 @@ def _distillation_train_step(
 
 
 def load_teacher_checkpoint(checkpoint_dir: Path) -> Tuple[Transformer, CheckpointMetadata]:
-    """Load a teacher model from checkpoint for distillation."""
+    """Load a teacher model from checkpoint for distillation.
+
+    Handles both regular teacher checkpoints and distilled student checkpoints
+    (which contain a DistillationContainer wrapping the student).
+    """
 
     checkpoint_dir = Path(checkpoint_dir)
     metadata = read_metadata(checkpoint_dir)
@@ -429,6 +439,7 @@ def load_teacher_checkpoint(checkpoint_dir: Path) -> Tuple[Transformer, Checkpoi
     teacher = Transformer(teacher_config, rngs)
 
     optimizer = create_optimizer(
+        optimizer_type=metadata.optimizer.get("type", "adamw"),
         learning_rate=metadata.optimizer.get("learning_rate", 1e-3),
         warmup_steps=metadata.optimizer.get("warmup_steps", 0),
         beta1=metadata.optimizer.get("beta1", 0.9),
@@ -438,11 +449,31 @@ def load_teacher_checkpoint(checkpoint_dir: Path) -> Tuple[Transformer, Checkpoi
 
     opt_state = optimizer.init(nnx.state(teacher, nnx.Param))
     rng = jax.random.PRNGKey(metadata.seed)
-    restored = restore_checkpoint(checkpoint_dir, teacher, opt_state, rng, metadata)
-    if restored is None:
-        raise ValueError(f"Unable to restore checkpoint from {checkpoint_dir}.")
 
-    return teacher, metadata
+    try:
+        # Try to load as plain Transformer (original teacher)
+        restored = restore_checkpoint(checkpoint_dir, teacher, opt_state, rng, metadata)
+        if restored is None:
+            raise ValueError("Restore returned None")
+        return teacher, metadata
+    except Exception as e:
+        # If that fails, checkpoint might be from distillation (contains DistillationContainer)
+        # Try loading into a DistillationContainer and extract the student
+        if "student" in str(e):
+            print(f"[Tunix] Checkpoint appears to be from distillation, extracting student model...")
+            teacher = Transformer(teacher_config, rngs)  # Recreate
+            container = DistillationContainer(teacher, projector=None)
+            opt_state = optimizer.init(nnx.state(container, nnx.Param))
+
+            restored = restore_checkpoint(checkpoint_dir, container, opt_state, rng, metadata)
+            if restored is None:
+                raise ValueError(f"Unable to restore checkpoint from {checkpoint_dir}: {e}")
+
+            # Extract the student model from the container
+            return container.student, metadata
+        else:
+            # Re-raise if it's a different error
+            raise
 
 
 def run_distillation(
@@ -497,6 +528,7 @@ def run_distillation(
     container = DistillationContainer(student=student, projector=projector)
 
     optimizer = create_optimizer(
+        optimizer_type=training_config.optimizer_type,
         learning_rate=training_config.learning_rate,
         warmup_steps=training_config.warmup_steps,
         beta1=training_config.beta1,
