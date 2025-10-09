@@ -1,0 +1,57 @@
+---
+export const frontmatter = {
+  title: "When Grokking Shrinks: Distilling Perfect Generalization into Tiny Transformers",
+  description: "Using Tunix to squeeze a grokked modular-division transformer down to 25% of its parameters without losing a single point of validation accuracy.",
+  pubDate: "2025-05-09",
+  tags: ["grokking", "distillation", "jax", "transformers", "tunix"],
+  heroImage: "../figures/paper_distillation_comparison.png"
+};
+---
+<article class="prose prose-invert max-w-none">
+  <p>
+    Grokking still feels like magic: a model memorizes an algorithmic dataset for ages, then flips a switch and suddenly aces every held-out example. In our latest experiment we trained a two-layer, 550K-parameter transformer on modular division (p = 97) until it grokked—and then asked a scarier question: can that crisp, perfectly generalizing behavior survive extreme downsizing?
+  </p>
+
+  <p>
+    Using Tunix, we distilled the grokked teacher into students that keep the depth but slash the width in half (64 dimensions instead of 128). That drop cuts parameters by roughly 75%, leaving ~140K weights to carry the entire algorithm. Despite the aggressive shrinkage, all three Tunix strategies we tried—logit matching, attention transfer, and feature projection—climbed back to ≥99.9% validation accuracy. Feature projection even arrived 1.4× sooner than the others, hitting the 99% mark after just 91 epochs.
+  </p>
+
+  <figure>
+    <img src="../figures/paper_distillation_comparison.png" alt="Validation accuracy and loss for teacher and distilled students" />
+    <figcaption>
+      Validation accuracy (left) and training loss (right) for the grokked teacher and three 0.5× students. Feature projection (green) reaches 99% validation accuracy ~30 epochs earlier than logit or attention transfer.
+    </figcaption>
+  </figure>
+
+  <h2>What made distillation work?</h2>
+  <ul>
+    <li><strong>Weight decay at 1.0 is non-negotiable.</strong> Matching the teacher’s unusually high regularization was the difference between success and catastrophic failure.</li>
+    <li><strong>Intermediate representations matter.</strong> Output-only distillation struggled until we combined hard labels and soft logits, whereas matching hidden states or attention maps transferred the grokked computation far more directly.</li>
+    <li><strong>Students still "delay" generalizing.</strong> Even with dense supervision, validation accuracy idled near-random through ~75 epochs before snapping upward—hinting that the grokking phase transition is structural, not just an optimization quirk.</li>
+  </ul>
+
+  <h2>Peeking under the hood</h2>
+  <figure>
+    <img src="../figures/paper_mechanistic_analysis.png" alt="CKA, effective rank, and attention entropy comparisons" />
+    <figcaption>
+      Mechanistic diagnostics show that students mirror the teacher closely in the first layer, compress their representations substantially, and adopt diverse attention behaviors depending on the distillation signal.
+    </figcaption>
+  </figure>
+  <p>
+    Centered Kernel Alignment (CKA) scores stay above 0.89 in the first layer, confirming that the students captured the teacher’s early algorithmic features. Effective-rank analysis reveals that the distilled models run the computation in fewer dimensions, especially with feature projection. Attention entropy paints different stories: feature projection keeps the second layer’s focus broad, while logit and attention transfer collapse onto sharper token relationships.
+  </p>
+
+  <h2>Why this matters</h2>
+  <p>
+    Grokking used to demand hefty models, long training runs, and lots of patience. Distillation flips that script. We can now train one expensive teacher, capture the grokked circuit, and redeploy it in a model that’s cheaper to serve and easier to interpret. For algorithmic reasoning tasks—where exactness matters more than raw capacity—that’s a compelling path toward practical, inspectable systems.
+  </p>
+
+  <h2>What’s next</h2>
+  <p>
+    The next milestones are statistical: we’re running 10 independent seeds per strategy to quantify variance, followed by recursive distillation to see how far we can keep shrinking. If the grokked signal survives a 0.25× student (32 dimensions) or even a quantized INT4 version, we’ll be looking at 100× compression without a scratch on accuracy.
+  </p>
+
+  <p>
+    Curious to reproduce it or try new tasks? Everything lives in <a href="https://github.com/atsentia/jax-tunix-grokking">github.com/atsentia/jax-tunix-grokking</a>. Pull requests welcome—especially if you have ideas for stress-testing the distilled students or probing their circuits.
+  </p>
+</article>

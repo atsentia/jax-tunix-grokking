@@ -1,0 +1,88 @@
+---
+export const frontmatter = {
+  title: "Distill Once, Deploy Everywhere: Grokking’s Perfect Generalization Survives a 4× Shrink",
+  description: "A product-flavored retelling of how Tunix pipelines capture a grokked transformer and redeploy it at a quarter of the parameter count.",
+  pubDate: "2025-05-09",
+  tags: ["product", "mlops", "distillation", "grokking"],
+  heroImage: "../figures/paper_teacher_grokking.png"
+};
+---
+<article class="prose prose-invert max-w-none">
+  <section>
+    <h1>The TL;DR</h1>
+    <p>
+      We trained a 550K-parameter teacher transformer on modular division until it grokked, then used Tunix to distill the exact behavior into 140K-parameter students. The students learn a little slower than the teacher’s “aha moment,” but they still finish with 99.9–100.0% validation accuracy. One run of feature-projection distillation buys a production-ready model that’s cheaper to host and easier to version.
+    </p>
+  </section>
+
+  <section>
+    <h2>Why this matters for product teams</h2>
+    <ul>
+      <li><strong>Cost reduction:</strong> 75% fewer parameters means lower memory footprints and better batch sizes for inference workloads.</li>
+      <li><strong>Repeatable deployment:</strong> Distillation history, checkpoints, and configs live in the repo so you can rebuild the students deterministically.</li>
+      <li><strong>Risk management:</strong> Grokking is notoriously brittle; compressing a proven model is safer than hoping a small model will grok from scratch.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Inside the pipeline</h2>
+    <figure>
+      <img src="../figures/paper_teacher_grokking.png" alt="Teacher grokking curve" />
+      <figcaption>The teacher spends ~70 epochs memorizing before flipping to 100% validation accuracy.</figcaption>
+    </figure>
+    <ol>
+      <li>Train the full-size teacher with heavy weight decay (1.0) until it reaches perfect validation accuracy.</li>
+      <li>Spawn a student at half width (64-dim residual stream) so parameter count drops to ~140K.</li>
+      <li>Pick the Tunix recipe: logits, attention maps, or hidden-state projection.</li>
+      <li>Run 50–150 epochs of distillation with the same optimizer schedule. Monitor validation accuracy in real time.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Results snapshot</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Strategy</th>
+          <th>Epochs to 99% Val</th>
+          <th>Final Val Accuracy</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Logit distillation</td>
+          <td>123</td>
+          <td>99.98%</td>
+          <td>Needs weight decay = 1.0 to avoid collapse.</td>
+        </tr>
+        <tr>
+          <td>Attention transfer</td>
+          <td>121</td>
+          <td>99.96%</td>
+          <td>Matches attention maps layer-by-layer.</td>
+        </tr>
+        <tr>
+          <td>Feature projection</td>
+          <td>91</td>
+          <td>100.00%</td>
+          <td>Learned 128→64 projections give a 1.4× convergence boost.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Mechanistic sanity checks</h2>
+    <p>
+      CKA, effective rank, and attention entropy confirm the students borrow the teacher’s early-layer circuits while simplifying later representations. That gives interpretability teams a clearer substrate to study—and makes it easier to catch regressions during future tuning.
+    </p>
+  </section>
+
+  <section>
+    <h2>Call to action</h2>
+    <p>
+      Want to ship a grokked model without paying the full teacher bill? Clone <a href="https://github.com/atsentia/jax-tunix-grokking">the repo</a>, run `test_feature_distillation.py`, and plug the resulting checkpoint into your serving stack. We’re working on 10-seed variance analysis plus recursive distillation (0.25× students) next—join the discussion or open an issue if you have deployment stories to share.
+    </p>
+  </section>
+</article>
