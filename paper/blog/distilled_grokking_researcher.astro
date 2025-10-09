@@ -1,0 +1,75 @@
+---
+export const frontmatter = {
+  title: "Feature Projections FTW: Notes from Distilling a Grokked Transformer",
+  description: "Researcher-oriented write-up comparing logit, attention, and hidden-state distillation for modular-division grokking models.",
+  pubDate: "2025-05-09",
+  tags: ["research", "interpretability", "grokking", "knowledge distillation"],
+  heroImage: "../figures/paper_mechanistic_analysis.png"
+};
+---
+<article class="prose prose-invert max-w-none">
+  <p>
+    This post is a lab notebook snapshot from our grokking + Tunix distillation study. The short version: feature projection wins. Matching hidden states via learned 128→64 projections not only preserves perfect validation accuracy, it also converges ~30 epochs faster than output-only or attention-only objectives when distilling a modular-division transformer.
+  </p>
+
+  <h2>Experimental setup</h2>
+  <ul>
+    <li><strong>Task:</strong> Modular division (prime p = 97) with 50% train / 50% validation split.</li>
+    <li><strong>Teacher:</strong> 2-layer transformer, 128-dim residual stream, ~550K parameters, weight decay = 1.0, trained for 150 epochs.</li>
+    <li><strong>Students:</strong> Same depth, 64-dim residual stream (~140K parameters). Distilled for 50–150 epochs depending on objective.</li>
+    <li><strong>Framework:</strong> JAX + Flax NNX + Tunix, checkpoints saved via Orbax.</li>
+  </ul>
+
+  <h2>What worked (and what didn’t)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Objective</th>
+        <th>Training recipe</th>
+        <th>Outcome</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Logit distillation</td>
+        <td>KL on τ = 2 soft targets + hard labels (α = 0.5)</td>
+        <td>Eventually hits 99.98% val accuracy, but only with weight decay = 1.0 and a full 150-epoch schedule.</td>
+      </tr>
+      <tr>
+        <td>Attention transfer</td>
+        <td>MSE on attention maps per layer</td>
+        <td>Converges to 99.96% val accuracy around epoch 121.</td>
+      </tr>
+      <tr>
+        <td>Feature projection</td>
+        <td>Learned linear maps from teacher hidden states → student width</td>
+        <td>Reaches 99% by epoch 91 and finishes at 100.00% val accuracy.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <figure>
+    <img src="../figures/paper_teacher_grokking.png" alt="Teacher grokking dynamics" />
+    <figcaption>Teacher model grokking transition around epoch 70 before distillation begins.</figcaption>
+  </figure>
+
+  <h2>Mechanistic readout</h2>
+  <p>
+    CKA scores show all students nearly clone the teacher’s first-layer features (0.89–0.92 similarity). By layer two, attention transfer retains the most similarity (0.68), while feature projection trades some alignment for lower-rank representations. Effective-rank analysis confirms the students compress the computation: the teacher uses ~39/41 dimensions per layer; feature-projected students finish with ~20/25.
+  </p>
+  <figure>
+    <img src="../figures/paper_mechanistic_analysis.png" alt="Mechanistic comparison plots" />
+    <figcaption>CKA, effective rank, and attention entropy comparisons for teacher and student models.</figcaption>
+  </figure>
+
+  <h2>Open questions</h2>
+  <ul>
+    <li>How stable are these results across random seeds? We’re running a 10-seed sweep to quantify variance.</li>
+    <li>Can we recursively distill to a 32-dim student (0.25× params) without breaking generalization?</li>
+    <li>Do feature projections reveal reusable algorithmic bases that transfer across modular arithmetic operations?</li>
+  </ul>
+
+  <p>
+    If you want to replicate or extend the experiments, check out the scripts in <code>paper/scripts</code> and the distillation harness in <code>src/distillation.py</code>. Feedback, critiques, and PRs are very welcome.
+  </p>
+</article>
